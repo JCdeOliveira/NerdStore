@@ -81,7 +81,7 @@ router.post('/', async (req, res) => {
     res.send(order);
 });
 
-// UPDATE an order
+// UPDATE an order status
 router.put('/:id', async (req, res) => {
     const order = await Order.findByIdAndUpdate(
         req.params.id,
@@ -99,30 +99,79 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE an order
-router.delete('/;id', (req, res) => {
+router.delete('/:id', (req, res) => {
     Order.findByIdAndRemove(req.params.id)
         .then(async (order) => {
             if (order) {
                 await order.orderItems.map(async (orderItem) => {
                     await OrderItem.findByIdAndRemove(orderItem);
                 });
-                return res.status(200).json({
-                    success: true,
-                    message: 'The order was deleted.',
-                });
+                return res
+                    .status(200)
+                    .json({ success: true, message: 'The order was deleted.' });
             } else {
                 return res.status(404).json({
                     success: false,
-                    message: 'The given order was not found.',
+                    message: 'The order was not found.',
                 });
             }
         })
         .catch((err) => {
-            return res.status(500).json({
-                success: false,
-                error: err,
-            });
+            return res.status(500).json({ success: false, error: err });
         });
+});
+
+// GET total sales
+router.get('/get/totalsales', async (req, res) => {
+    const totalSales = await Order.aggregate([
+        { $group: { _id: null, totalsales: { $sum: '$totalPrice' } } },
+    ]);
+
+    if (!totalSales) {
+        return res.status(400).send('The order sales cannot be generated.');
+    }
+
+    res.send({ totalsales: totalSales.pop().totalsales });
+});
+
+// GET orders count
+router.get(`/get/count`, (req, res) => {
+    Order.countDocuments().then((count) => {
+        if (count) {
+            return res.status(200).json({
+                success: true,
+                message: `There are ${count} orders.`,
+            });
+        } else {
+            return res
+                .status(404)
+                .json({
+                    success: false,
+                    message: 'Count failed! Please try again...',
+                })
+                .catch((err) => {
+                    return res.status(500).json({ success: false, error: err });
+                });
+        }
+    });
+});
+
+// GET orders for a given user
+router.get('/get/userorders/:userid', async (req, res) => {
+    const userOrderList = await Order.find({ user: req.params.userid })
+        .populate({
+            path: 'orderItems',
+            populate: {
+                path: 'product',
+                populate: 'category',
+            },
+        })
+        .sort({ dateOrdered: -1 });
+
+    if (!userOrderList) {
+        res.status(500).json({ success: false });
+    }
+    res.send(userOrderList);
 });
 
 module.exports = router;
